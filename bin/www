@@ -1,0 +1,176 @@
+#!/usr/bin/env node
+/**
+ * Module dependencies.
+ */
+var express = require('express');
+var app = express();
+var debug = require('debug')('ch-server:server');
+var http = require('http');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+var io = require('socket.io')(server);
+
+var playersPull =  new Set();
+playersPull.clear();
+var rooms =  new Set();
+rooms.clear();
+
+
+playersPlaying = [];
+
+
+io.on('connection', function(socket){
+
+    console.log('a user connected');
+
+    socket.on('search match', function (id) {
+
+        playersPull.add(socket.id);
+        console.log("search match for id: "+ id );
+
+        playersPull.forEach(
+            function (value) {
+                console.log(io.sockets.connected);
+
+                console.log(value != id);
+                if ((value != id) && (value != null)) {
+                    let room = value+"-"+id;
+                    rooms.add(room);
+
+
+                    console.log(io.sockets.connected[value].id);
+                    console.log(io.sockets.connected[id].id);
+
+                    socket.join(room);
+                    io.sockets.connected[value].join(room);
+                    socket.emit("match found", room);
+                    io.sockets.in(room).emit("match found", room);
+                    playersPull.delete(id);
+                    playersPull.delete(value);
+                }
+            }
+        );
+
+        // var i, sockets=io.sockets.connected;
+        // for (i in sockets) {
+        //     if ( //looking for match partner
+        //     io.sockets.connected[i].handshake.session.hasOwnProperty('passport')  //authorised with passport
+        //     && io.sockets.connected[i].id != id  //non self
+        //     && io.sockets.connected[i].searching == true //searching a match
+        //     && Object.keys(socket.rooms).length < 2  //if there any another player searching
+        //     ) {
+        //         var room = socket.id + "-" + io.sockets.connected[i].id; //room name
+        //         socket.join(room); //creating a match room
+        //         io.to(room).emit('Match found');
+        //     }
+        // }
+
+    });
+
+    socket.on('game over', function (roomId) {
+        rooms.delete(roomId);
+    });
+
+    socket.on('blue move', function (data) {
+        console.log(data);
+        socket.broadcast.to(data.roomId).emit('blue move', data)
+    });
+
+    socket.on('blue hit', function (data) {
+        console.log(data);
+        socket.broadcast.to(data.roomId).emit('blue hit', data)
+    });
+
+    socket.on('ball collision', function (data) {
+        console.log(data);
+        socket.broadcast.to(data.roomId).emit('blue hit', data)
+    });
+
+    socket.on('disconnect', function(){
+        console.log('user disconnected');
+        playersPull.delete(socket.id);
+    });
+});
+
+
+app = require('../app')(app, io);
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+    var port = parseInt(val, 10);
+
+    if (isNaN(port)) {
+        // named pipe
+        return val;
+    }
+
+    if (port >= 0) {
+        // port number
+        return port;
+    }
+
+    return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+    if (error.syscall !== 'listen') {
+        throw error;
+    }
+
+    var bind = typeof port === 'string'
+        ? 'Pipe ' + port
+        : 'Port ' + port;
+
+    // handle specific listen errors with friendly messages
+    switch (error.code) {
+        case 'EACCES':
+            console.error(bind + ' requires elevated privileges');
+            process.exit(1);
+            break;
+        case 'EADDRINUSE':
+            console.error(bind + ' is already in use');
+            process.exit(1);
+            break;
+        default:
+            throw error;
+    }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+    var addr = server.address();
+    var bind = typeof addr === 'string'
+        ? 'pipe ' + addr
+        : 'port ' + addr.port;
+    debug('Listening on ' + bind);
+}
